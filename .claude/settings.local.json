@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"e:\\\\Project\\\\Artificial Neural Interactive Terminal Architecture\" -Depth 1 -Name)",
+      "Bash(Sort-Object)",
+      "Bash(git remote *)"
+    ]
+  }
+}

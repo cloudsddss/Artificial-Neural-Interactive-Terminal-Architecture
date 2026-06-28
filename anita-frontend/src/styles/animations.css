@@ -1,0 +1,38 @@
+/* ============================================================
+   受击屏幕震动动画
+   触发条件：isTakingDamage = true
+   效果：元素上下左右剧烈抖动 + 旋转 + 模糊 + 色相旋转 + 反色
+   震动节奏：前 40% 剧烈（10px + 多重滤镜），中间短暂清晰，后半段继续摇晃
+   ============================================================ */
+@keyframes hardcore-shake {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); filter: blur(0px); }
+  10% { transform: translate(-10px, 10px) rotate(-2deg); filter: blur(2px) hue-rotate(90deg); }
+  20% { transform: translate(10px, -10px) rotate(2deg); filter: blur(0px); }
+  30% { transform: translate(-10px, -10px) rotate(0deg); filter: blur(3px) invert(0.3); }
+  40% { transform: translate(10px, 10px) rotate(-2deg); }
+  50% { transform: translate(-5px, 5px) rotate(2deg); filter: blur(0px); }
+  60% { transform: translate(5px, -5px) rotate(0deg); }
+  70% { transform: translate(-10px, -10px) rotate(-2deg); }
+  80% { transform: translate(10px, 10px) rotate(2deg); }
+  90% { transform: translate(-5px, -5px) rotate(0deg); }
+}
+
+.animate-shake {
+  animation: hardcore-shake 0.8s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* ============================================================
+   CRT 扫描线闪烁动画
+   触发条件：始终运行（挂在 ScanlineOverlay 上）
+   效果：95%↔85% 透明度快速循环，肉眼几乎察觉不到具体闪烁，
+   但会本能地感觉到"这个屏幕不太对劲"
+   ============================================================ */
+@keyframes flicker {
+  0% { opacity: 0.95; }
+  50% { opacity: 0.85; }
+  100% { opacity: 0.95; }
+}
+
+.crt-flicker {
+  animation: flicker 0.15s infinite;
+}

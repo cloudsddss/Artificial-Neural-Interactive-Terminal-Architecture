@@ -1,0 +1,10 @@
+/* index.css 里的 @theme 块 */
+@import "tailwindcss";
+@theme {
+  --color-terminal-green: #22c55e;
+  --color-terminal-bg: #000000;
+  --color-terminal-border: #166534;
+  --color-danger: #ef4444;
+  --color-sanity: #a855f7;
+  --color-sync: #3b82f6;
+}

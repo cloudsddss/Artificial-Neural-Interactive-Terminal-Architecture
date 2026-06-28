@@ -1,0 +1,97 @@
+# =====================
+# Dependencies
+# =====================
+node_modules/
+.pnp
+.pnp.js
+
+# =====================
+# Build output
+# =====================
+dist/
+dist-ssr/
+build/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# =====================
+# Environment files
+# =====================
+.env
+.env.*.local
+.env.production
+.env.development
+
+# Local env files (not tracked by git)
+*.local
+
+# =====================
+# Logs
+# =====================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =====================
+# Runtime / cache
+# =====================
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# =====================
+# Test coverage
+# =====================
+coverage/
+.coverage
+*.lcov
+.nyc_output/
+
+# =====================
+# Editor / IDE
+# =====================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# =====================
+# OS files
+# =====================
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =====================
+# Windows ecosystem
+# =====================
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# =====================
+# Misc
+# =====================
+*.tgz
+.eslintcache
+.turbo/
+.env.staging
