@@ -32,6 +32,14 @@ export async function initDB() {
       player_id VARCHAR(50) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+  try {
+    // (player_id, timestamp) 联合索引：WHERE player_id=? + ORDER BY timestamp DESC 走索引
+    await pool.query(
+      `CREATE INDEX idx_memories_player_ts ON memories (player_id, timestamp)`
+    );
+  } catch (e: any) {
+    if (e?.code !== 'ER_DUP_KEYNAME') console.error('[建索引失败]:', e);   // 已存在则静默
+  }
 }
 //自动建立用户信息表，若不存在则创建
 /**
