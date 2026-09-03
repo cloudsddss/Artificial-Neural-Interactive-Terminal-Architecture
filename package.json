@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node dev.js",
     "dev:backend": "npm start --prefix anita-backend",
     "dev:frontend": "npm run dev --prefix anita-frontend"
   },
