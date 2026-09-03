@@ -84,12 +84,14 @@ function GameContent({ playerId, initialPlayerState, initialMessages }: {
     initialPlayerState,
   });
 
+  // 在 GameContent 内部计算是否处于认知污染状态
+  const isCorrupted = playerState.sanity < 30;
   // 游戏界面
   return (
     <div className={`min-h-screen font-mono p-4 md:p-8
       flex flex-col md:flex-row gap-6 transition-colors duration-200
-      ${isTakingDamage ? 'bg-red-950 animate-shake text-red-500' : 'bg-black text-green-500'}`}>
-
+      ${isTakingDamage ? 'bg-red-950 animate-shake text-red-500' : 'bg-black text-green-500'}
+      ${isCorrupted ? 'terminal-glitch' : ''}`}>
       <ScanlineOverlay />
 
       <Terminal

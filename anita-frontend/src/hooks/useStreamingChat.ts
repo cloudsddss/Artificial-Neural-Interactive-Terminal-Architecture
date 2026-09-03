@@ -143,6 +143,46 @@ export function useStreamingChat(options: UseStreamingChatOptions): UseStreaming
 
     if (!userMsg.trim() || isLoading) return;
 
+    const trimmed = userMsg.trim();
+    
+    // ============================================================
+    // ★ 本地斜杠指令系统 (Local Slash Commands) — 0 网络开销
+    // ============================================================
+    if (trimmed.startsWith('/')) {
+      const cmd = trimmed.toLowerCase();
+      if (cmd === '/clear') {
+        setMessages([{ role: 'assistant', content: 'A.N.I.T.A. 终端屏幕已重置。' }]);
+        return;
+      }
+      if (cmd === '/help') {
+        const helpText = `\n[A.N.I.T.A. 终端本地指令系统]\n/help      - 查看可用指令列表\n/clear     - 清空终端通讯记录\n/status    - 快速体征与神经状态诊断\n/inventory - 随身物品库速查`;
+        setMessages(prev => [
+          ...prev,
+          { role: 'user', content: trimmed },
+          { role: 'assistant', content: helpText }
+        ]);
+        return;
+      }
+      if (cmd === '/status') {
+        const statusText = `\n[操作员生命体征诊断报告]\n生命值 (HP): ${playerState.hp}%\n理智值 (SANITY): ${playerState.sanity}%\n神经同步率: ${playerState.integration}%\n当前环境威胁: ${playerState.hazards.join(', ') || '无威胁'}`;
+        setMessages(prev => [
+          ...prev,
+          { role: 'user', content: trimmed },
+          { role: 'assistant', content: statusText }
+        ]);
+        return;
+      }
+      if (cmd === '/inventory') {
+        const invText = `\n[随身物资清单]\n${(playerState.inventory ?? []).map(i => `• ${i}`).join('\n') || '空无一物'}`;
+        setMessages(prev => [
+          ...prev,
+          { role: 'user', content: trimmed },
+          { role: 'assistant', content: invText }
+        ]);
+        return;
+      }
+    }
+
     // 构建新的消息列表（包含用户新消息）
     const newMessages = [...messages, { role: 'user', content: userMsg } as Message];
     setMessages(newMessages);
