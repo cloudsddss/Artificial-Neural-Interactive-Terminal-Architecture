@@ -5,7 +5,8 @@ import { useRef, useState } from 'react';
 // ============================================================
 export type UseAudioReturn = {
   audioEnabled: boolean;        // 音频系统是否已初始化
-  initAudio: () => void;        // 初始化音频上下文（由用户交互触发）
+  toggleAudio: () => void;      // 切换音频开关（开启/静音）
+  initAudio: () => void;        // 兼容旧接口，同 toggleAudio
   playTypingSound: () => void;  // 打字机音效：方波短促哔声
   playAlarmSound: () => void;   // 警报音效：锯齿波频率扫描
 };
@@ -24,34 +25,32 @@ export function useAudio(): UseAudioReturn {
   // --- 初始化音频上下文 ---
   // 由用户交互（点击/发送消息）触发，浏览器要求必须在用户手势中创建 AudioContext
   // 生成 50Hz 机房底噪（正弦波极低频嗡嗡声，永久播放）
-  const initAudio = () => {
-    // 已创建过则跳过，避免重复创建
-    if (audioCtxRef.current) {
-      // 如果被浏览器挂起（长时间无交互），强制唤醒
-      if (audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume();
-      }
+  const toggleAudio = async () => {
+     // 1. 如果从未初始化过，先创建 AudioContext 和 50Hz 机房底噪
+    if (!audioCtxRef.current) {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioCtxRef.current = ctx;
+      // 创建 50Hz 正弦波底噪（模拟电气嗡嗡声）
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 50;
+      gain.gain.value = 0.04;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      setAudioEnabled(true);
       return;
     }
-
-    // webkitAudioContext 为 Safari 兼容写法
-    audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-
-    // 创建 50Hz 正弦波底噪，音量极低（0.05），模拟机房/设施电气噪音
-    const osc = audioCtxRef.current.createOscillator();
-    const gain = audioCtxRef.current.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 50;
-    gain.gain.value = 0.05;
-    osc.connect(gain);
-    gain.connect(audioCtxRef.current.destination);
-    osc.start(); // 永不停止，直到页面关闭
-
-    setAudioEnabled(true);
-
-    // 如果 AudioContext 创建后立即被挂起，强制恢复
-    if (audioCtxRef.current.state === 'suspended') {
-      audioCtxRef.current.resume();
+    // 2. 如果已经初始化过，在 suspend (静音) 和 resume (恢复) 之间切换
+    if (audioCtxRef.current.state === 'running') {
+      // 挂起音频上下文，瞬间静音所有声音（包括底噪）
+      await audioCtxRef.current.suspend();
+      setAudioEnabled(false);
+    } else {
+      // 恢复音频上下文
+      await audioCtxRef.current.resume();
+      setAudioEnabled(true);
     }
   };
 
@@ -118,7 +117,8 @@ export function useAudio(): UseAudioReturn {
 
   return {
     audioEnabled,
-    initAudio,
+    toggleAudio,
+    initAudio: toggleAudio, // 兼容原名称
     playTypingSound,
     playAlarmSound
   };

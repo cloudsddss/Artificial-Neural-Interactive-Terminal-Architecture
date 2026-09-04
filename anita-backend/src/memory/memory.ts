@@ -43,19 +43,67 @@ initDB();
 // 全局的特征提取器 (Embedding Model)
 let extractor: any = null
 
+// 检索记忆 (从 MySQL 提取并计算相似度，返回最相关的 topK 条)
+const MIN_TEXT_LENGTH = 3;          // 跳过无意义短文本
+const MAX_CANDIDATES = 100;         // 候选集上限（原 LIMIT 500）
+let lastSavedText = '';   // 模块级去重哨兵（MVP 单进程足够）
+
 /**
  * 核心：将自然语言文本转化为高维向量 (Embedding)
  */
+// ===== Embedding LRU 缓存 =====
+const embeddingCache = new Map<string, number[]>();
+// 非法配置（0/NaN/负数）一律回退 200，避免缓存被静默禁用
+const MAX_CACHE_SIZE = Math.max(1, Number(process.env.EMBEDDING_CACHE_SIZE) || 200);
+let cacheHitCount = 0;
+let cacheMissCount = 0;
+
+function getEmbeddingCached(text: string): number[] | undefined {
+  const key = text.trim();
+  const val = embeddingCache.get(key);
+  if (val) {
+    // 刷新存活顺序：先删后插，让 Map 迭代序 = 最近使用序
+    embeddingCache.delete(key);
+    embeddingCache.set(key, val);
+    cacheHitCount++;
+    return val;
+  }
+  cacheMissCount++;
+  // 每 20 次未命中输出一次命中率，验证缓存收益，日志量可控
+  if (cacheMissCount % 20 === 0) {
+    const hitRate = (cacheHitCount / (cacheHitCount + cacheMissCount)) * 100;
+    console.log(`[Embedding 缓存] 命中率 ${hitRate.toFixed(1)}% (${cacheHitCount} 命中 / ${cacheMissCount} 未命中)`);
+  }
+  return undefined;
+}
+
+function setEmbeddingCached(text: string, embedding: number[]): void {
+  const key = text.trim();
+  // 只有插入新 key 才需要淘汰：重复写入已有 key 不会增加容量，满了也淘汰会白白挤掉一条
+  if (!embeddingCache.has(key) && embeddingCache.size >= MAX_CACHE_SIZE) {
+    // Map.keys().next() 返回最早插入（最久未使用）的 key
+    const oldestKey = embeddingCache.keys().next().value;
+    if (oldestKey !== undefined) embeddingCache.delete(oldestKey);
+  }
+  embeddingCache.set(key, embedding);
+}
+
 async function getEmbedding(text: string): Promise<number[]> {
   if (!extractor) {
     console.log('[系统] 正在初始化本地量子记忆核心...');
     extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
     console.log('[系统] 记忆核心初始化完毕！');
   }
-  // 使用extractor对文本进行嵌入处理, normalize: true表示归一化,模长为1
+  // 命中缓存 → 跳过模型推理，直接返回
+  const cached = getEmbeddingCached(text);
+  if (cached) return cached;
+
   const output = await extractor(text, { pooling: 'mean', normalize: true });
-  return Array.from(output.data);
+  const embedding = <number[]>Array.from(output.data);
+  setEmbeddingCached(text, embedding);
+  return embedding;
 }
+
 /**
  * 核心：计算两个向量之间的余弦相似度
  * 因为向量已归一化（模长=1），所以余弦相似度 = 点积
@@ -71,6 +119,9 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
  * 存入记忆 (写入 MySQL 数据库)
  */
 export async function saveMemory(actionText: string, playerId: string): Promise<void> {
+  const trimmed = actionText.trim();
+  if (trimmed.length < MIN_TEXT_LENGTH || trimmed === lastSavedText) return;
+  lastSavedText = trimmed;
   try {
     const embedding = await getEmbedding(actionText);
     const id = Math.random().toString(36).substring(2, 15);/// 生成唯一ID
@@ -91,52 +142,53 @@ export async function saveMemory(actionText: string, playerId: string): Promise<
  */
 export async function retrieveMemories(playerId: string, query: string, topK: number = 3): Promise<string[]> {
     try{
-        const queryEmbedding = await getEmbedding(query);/// 获取查询文本的嵌入向量
-        // 从数据库中检索所有当前玩家的记忆,返回格式为数组
-        const [rows] = await pool.query<mysql.RowDataPacket[]>('SELECT text, embedding FROM memories WHERE player_id = ? ORDER BY timestamp DESC LIMIT 500', [playerId]);
+        // 空查询 / 过短查询直接短路，避免无意义检索
+        if (!query || query.trim().length < MIN_TEXT_LENGTH) return [];
 
-        if (!rows || rows.length === 0) return [];/// 如果没有找到记忆，返回空数组
-        
-        // 计算查询向量与每个记忆向量的余弦相似度,对数组每一项进行处理。
-        // 返回对象数组，包含文本和相似度，相似度为数据库中的值和查询向量的相似度
-        const similarities = rows.map((row:any) => {
-            // 【核心修复】：增强容错能力，防止历史脏数据导致 JSON.parse 崩溃
+        console.time('[记忆检索耗时]');   // A4 耗时打点：embedding + SQL + 相似度计算
+        const queryEmbedding = await getEmbedding(query);   // 自动走 LRU 缓存
+
+        // SQL 层完成：player 过滤 + 短文本过滤 + 最近优先 + 候选裁剪
+        const [rows] = await pool.query<mysql.RowDataPacket[]>(
+            `SELECT text, embedding FROM memories
+             WHERE player_id = ? AND CHAR_LENGTH(text) >= ?
+             ORDER BY timestamp DESC LIMIT ?`,
+            [playerId, MIN_TEXT_LENGTH, MAX_CANDIDATES]
+        );
+
+        if (!rows || rows.length === 0) { console.timeEnd('[记忆检索耗时]'); return []; }
+
+        // 原 JSON.parse 容错逻辑（脏数据兼容）保持不变
+        const similarities = rows.map((row: any) => {
             let memEmbedding: number[];
             if (typeof row.embedding === 'string') {
                 try {
-                // 尝试按标准 JSON 数组解析
-                memEmbedding = JSON.parse(row.embedding);
+                    memEmbedding = JSON.parse(row.embedding);
                 } catch (e) {
-                // 如果报错，说明数据库里存的是没有括号的逗号分隔字符串 (脏数据)
-                // 此时我们手动用逗号切分，并转换成数字数组
-                memEmbedding = row.embedding.split(',').map(Number);
+                    memEmbedding = row.embedding.split(',').map(Number);   // 脏数据兜底
                 }
             } else {
-                // 如果 mysql2 驱动已经自动解析成了对象/数组
                 memEmbedding = row.embedding;
             }
-            return {
-                text: row.text,
-                similarity: cosineSimilarity(queryEmbedding, memEmbedding)
-            };
+            return { text: row.text, similarity: cosineSimilarity(queryEmbedding, memEmbedding) };
         });
-        // 按相似度降序排序
-        similarities.sort((a: { similarity: number }, b: { similarity: number }) => b.similarity - a.similarity);
-        // 打印相似度分数雷达
+
+        similarities.sort((a, b) => b.similarity - a.similarity);
         console.log("【RAG 相似度分数雷达】:", similarities.slice(0, 3));
-        // 返回最相关的 topK 条记忆,相似度大于0.3
-        const relevantTexts:string[]=similarities
-        .filter((item: { similarity: number }) => item.similarity > 0.3)//查询相似度大于0.3的记忆
-        .slice(0, topK)//取前topK个
-        .map((item: { text: string }) => item.text);// 提取文本内容
-        return relevantTexts;
-        
+        console.log(`[Embedding 缓存] 命中 ${cacheHitCount} 次 / 未命中 ${cacheMissCount} 次`);
+        console.timeEnd('[记忆检索耗时]');
+        // 保留 0.3 阈值过滤 + topK 截取，输出逻辑不变
+        return similarities
+            .filter((item) => item.similarity > 0.3)
+            .slice(0, topK)
+            .map((item) => item.text);
     }
     catch (error) {
         console.error('[记忆检索失败]:', error);
         return [];
     }
 }
+
 
 
 

@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import healthRouter from "@/routes/health";
 import chatRouter from "@/routes/chat"
 import userSessionRouter from "@/routes/userSession";
+import scenariosRouter from "@/routes/scenarios";
 import {chatLimiter,globalLimiter} from "@/tools/Limiter"
 
 dotenv.config();
@@ -24,6 +25,7 @@ app.use(globalLimiter);              // 全局限流
 app.use('/health', healthRouter);
 app.use('/api/chat', chatRouter,chatLimiter);// 聊天接口加专属限流
 app.use('/api', userSessionRouter);
+app.use('/api/scenarios', scenariosRouter);
 
 
 // 启动

@@ -1,118 +1,167 @@
-import {Router, Request, Response} from "express"
-import {streamText} from 'ai'
+import { Router, Request, Response } from "express";
+import { streamText } from 'ai';
 import { deepseek } from '@ai-sdk/deepseek';
 import { buildSystemPrompt } from '../prompts/system';
-import { updateSystemStateTool } from '../tools/updateSystemState';
 import { retrieveMemories, saveMemory } from '../memory/memory';
+import { getScenario } from '../scenarios';
+import { resolveAction } from '../arbiter/arbiter';
 
-const chatRouter = Router()
+const chatRouter = Router();
 
-/**
- * 
- * 聊天接口
- * 请求参数：
- * - messages: 消息列表，数组格式，每条消息包含角色和内容
- * - playerState: 玩家当前状态，JSON格式
- * - playerId: 玩家ID，字符串类型
- * 响应参数：
- * - 事件流 (SSE)，包含大模型的文本响应和工具调用指令
- * 
- * 处理流程：
- * 1. 接收玩家消息和状态
- * 2. 自动检索相关记忆，构建系统提示词
- * 3. 调用大模型生成响应，监听全量事件流
- * 4. 将文本响应和工具调用指令通过 SSE 实时发送给前端
- * 5. 在响应结束后自动将新的记忆存档到数据库
- * 
- * 注意事项：
- * - 需要前端支持 SSE 协议，能够处理 'text' 和 'tool' 两种事件类型
- * - 大模型的工具调用会直接触发前端对应功能的执行，因此要确保工具接口的安全性和稳定性
- * - 记忆存档是异步进行的，不会阻塞当前聊天响应，但可能会有短暂的延迟
- * - 需要确保数据库连接池的稳定性，避免在高并发情况下出现连接问题
- * - 这是 A.N.I.T.A. 系统的核心接口，承载了玩家与大模型交互的全部逻辑，因此需要特别注意错误处理和性能优化
- * - 未来可以考虑增加更多的工具调用类型，以及更复杂的系统提示词构建逻辑，以提升 A.N.I.T.A. 的智能水平和交互体验
-*/
-chatRouter.post('/',async (req: Request, res: Response) => {
-    try{
-        const {messages,playerState,playerId }=req.body
-        console.log(messages,playerState)
-        if (!messages || !Array.isArray(messages) || messages.length === 0) {
-            res.status(400).json({ error: '没有提供消息。' });
-            return;
-        }
-        if (!playerState || typeof playerState !== 'object') {
-            res.status(400).json({ error: '玩家状态无效。' });
-            return;
-        }
-        if (!playerId || typeof playerId !== 'string') {
-            res.status(400).json({ error: '玩家ID无效。' });
-            return;
-        }
+chatRouter.post('/', async (req: Request, res: Response) => {
+  const { messages, playerState, playerId,scenarioId } = req.body;
+  // 获取剧本配置
+  const scenarioConfig = getScenario(scenarioId);
 
-        //取用户最新的消息
-        const lastUserMsg=messages[messages.length-1].content
+  // ---- 0. 参数校验：SSE 头设置之前，保持 400 JSON 语义不变 ----
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    res.status(400).json({ error: '没有提供消息。' }); return;
+  }
+  if (!playerState || typeof playerState !== 'object') {
+    res.status(400).json({ error: '玩家状态无效。' }); return;
+  }
+  if (!playerId || typeof playerId !== 'string') {
+    res.status(400).json({ error: '玩家ID无效。' }); return;
+  }
+  const lastUserMsg = messages[messages.length - 1].content;
 
-        // 自动检索相关记忆
-        const pastMemories = await retrieveMemories(playerId, lastUserMsg);
-        const memoryContext = pastMemories.length > 0
-        ? pastMemories.map((m: string) => `- ${m}`).join('\n')
-        : "无相关历史记录。";
-        console.log('[记忆检索]', pastMemories);
+  // ---- 1. SSE 响应头：加 no-transform + X-Accel-Buffering 防 Nginx 缓冲/压缩破坏流 ----
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
 
+  // ---- 2. 安全写入器：客户端断开后所有 write 静默失败，绝不抛 EPIPE ----
+  res.on('error', () => { /* 吞掉 EPIPE/ERR_STREAM_WRITE_AFTER_END，仅日志 */ });
+  const sendEvent = (event: string, data: string): boolean => {
+    if (res.writableEnded || res.destroyed) return false;
+    res.write(`event: ${event}\ndata: ${data}\n\n`);
+    return true;
+  };
 
-        // 1. 设置响应头，声明这是一个 SSE (Server-Sent Events) 流
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        //处理请求，建立流式输出文本
-        const result=await streamText({
-            model:deepseek(process.env.DEEPSEEK_MODEL||'deepseek-v4-flash'),
-            system: buildSystemPrompt(playerState,memoryContext),
-            messages:messages,
-            tools:{
-                updateSystemState: updateSystemStateTool,
-            }
-        })
-        let lastText = '';
-        // 2. 监听全量事件流 (fullStream)
-        for await (const Part of result.fullStream){
-            // 将普通剧情文本包装成 'text' 事件发送
-            // 将换行符等特殊字符转义，防止破坏 SSE 协议结构
-            if(Part.type==='text-delta'){
-                const textPart=Part.text;
-                const safeText = JSON.stringify(textPart); 
-                res.write(`event: text\ndata: ${safeText}\n\n`);
-                lastText += textPart;
-            }
-            if(Part.type==='tool-call'){
-                // 这是大模型决定调用工具的瞬间！
-                // 我们在这里把工具调用的参数包装成 'tool' 事件发给前端
-                console.log(`[调用工具]`, Part.toolName);
-                if (Part.toolName === 'updateSystemState') {
-                    console.log(`[发送工具指令到前端]`, Part.input);
-                    res.write(`event: tool\ndata: ${JSON.stringify(Part.input)}\n\n`);
-                }
-            }
-            
-        }
-        // 3. 流结束时关闭连接
-        res.write('event: end\ndata: {}\n\n');
-        res.end();
-        //自动将记忆进行存档,异步存档
-        setTimeout(()=>{
-            const summary=`玩家动作：[${lastUserMsg}]。回应大意：${lastText.substring(0, 100)}`
-            saveMemory(summary, playerId)
-        },0)
+  // ---- 3. 心跳保活：每 15s 一个 ping（在模型首 token 到达前就已开始）----
+  const heartbeat = setInterval(() => sendEvent('ping', '{}'), 15000);
 
+  let clientDisconnected = false;
+  let streamResult: any = null;
+  let lastText = '';
+  let streamError = false;
 
-        console.log(lastText);
+  // 客户端断开：停心跳 + 终止上游模型请求（省 token/费用）
+  req.on('close', () => {
+    clientDisconnected = true;
+    clearInterval(heartbeat);
+    if (streamResult) { try { streamResult.abort(); } catch { /* 版本差异兜底 */ } }
+  });
+
+  try {
+    // ---- 4. 记忆检索 ----
+    const pastMemories = await retrieveMemories(playerId, lastUserMsg);
+    const memoryContext = pastMemories.length > 0
+      ? pastMemories.map((m: string) => `- ${m}`).join('\n')
+      : "无相关历史记录。";
+
+    // ============================================================
+    // ★ 阶段一：裁决节点 (Arbiter Engine)
+    // 纯逻辑推理，得出数值、物品、线索与事实描述
+    // ============================================================
+    const decision = await resolveAction(lastUserMsg, playerState, memoryContext, scenarioConfig.arbiterRules);
+
+    // ============================================================
+    // ★ 中间层：规则引擎校验 + 立即推送 tool 事件给前端
+    // ============================================================
+    // 1. 状态数值与环境威胁变化
+    if (
+      decision.hpChange !== 0 ||
+      decision.sanityChange !== 0 ||
+      (decision.integrationChange && decision.integrationChange !== 0) ||
+      (decision.newHazards && decision.newHazards.length > 0)
+    ) {
+      sendEvent('tool', JSON.stringify({
+        toolName: 'updateSystemState',
+        hpChange: decision.hpChange,
+        sanityChange: decision.sanityChange,
+        integrationChange: decision.integrationChange ?? 0,
+        newHazards: decision.newHazards,
+        systemLog: decision.systemLog,
+      }));
     }
-    catch(error){
-        console.error('A.N.I.T.A. System Error:', error);
-        // res.status(500).json({ error: 'SYSTEM CORE FAILURE.' });
-        res.write(`event: text\ndata: "[A.N.I.T.A. 系统故障]"\n\n`);
-        res.end();
+
+    // 2. 道具使用校验（严格防作弊校验）
+    let itemActuallyUsed = null;
+    if (decision.itemToUse) {
+      const hasItem = (playerState.inventory ?? []).includes(decision.itemToUse.item);
+      if (hasItem) {
+        itemActuallyUsed = decision.itemToUse;
+        sendEvent('tool', JSON.stringify({
+          toolName: 'useInventoryItem',
+          ...decision.itemToUse,
+        }));
+      }
     }
-})
+
+    // 3. 线索发现
+    if (decision.clueDiscovered) {
+      sendEvent('tool', JSON.stringify({
+        toolName: 'discoverClue',
+        ...decision.clueDiscovered,
+      }));
+    }
+
+    // 4. 计算生效后的最新玩家状态，供阶段二主脑提示词使用
+    const updatedPlayerState = {
+      ...playerState,
+      hp: Math.max(0, Math.min(100, (playerState.hp ?? 100) + decision.hpChange)),
+      sanity: Math.max(0, Math.min(100, (playerState.sanity ?? 100) + decision.sanityChange)),
+      integration: Math.max(0, Math.min(100, (playerState.integration ?? 15) + (decision.integrationChange ?? 0))),
+      hazards: decision.newHazards && decision.newHazards.length > 0
+        ? [...new Set([...(playerState.hazards ?? []), ...decision.newHazards])]
+        : playerState.hazards,
+      inventory: itemActuallyUsed
+        ? (playerState.inventory ?? []).filter((i: string) => i !== itemActuallyUsed.item)
+        : playerState.inventory,
+    };
+
+    // ============================================================
+    // ★ 阶段二：主脑叙事流 (Narrator Stream)
+    // 纯文本流式输出冷酷台词，不带 tools，不再可能伪造警告
+    // ============================================================
+    streamResult = await streamText({
+      model: deepseek(process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash'),
+      system: scenarioConfig.systemPromptBuilder(updatedPlayerState, memoryContext, decision.factForNarrator),
+      messages: messages,
+    });
+
+    for await (const part of streamResult.fullStream) {
+      if (clientDisconnected) break;
+      if (part.type === 'text-delta') {
+        const safeText = JSON.stringify(part.text);
+        if (!sendEvent('text', safeText)) break;
+        lastText += part.text;
+      } else if (part.type === 'error') {
+        streamError = true;
+        sendEvent('error', JSON.stringify({ code: 'STREAM_ERROR', message: '模型流异常中断' }));
+        break;
+      }
+    }
+
+    if (!clientDisconnected && !streamError) {
+      sendEvent('end', '{}');
+    }
+
+    // 异步记忆存档
+    const summary = `玩家动作：[${lastUserMsg}]。判定事实：[${decision.factForNarrator}]。主脑回应：${lastText.substring(0, 80)}`;
+    setTimeout(() => saveMemory(summary, playerId), 0);
+  } catch (error) {
+    console.error('A.N.I.T.A. System Error:', error);
+    if (clientDisconnected || res.destroyed) return;
+    sendEvent('error', JSON.stringify({ code: 'SYSTEM_FAILURE', message: 'A.N.I.T.A. 系统故障' }));
+  } finally {
+    clearInterval(heartbeat);
+    if (!res.writableEnded) res.end();
+  }
+});
 
 export default chatRouter;
+
