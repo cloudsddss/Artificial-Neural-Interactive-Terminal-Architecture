@@ -6,6 +6,7 @@ import chatRouter from "@/routes/chat"
 import userSessionRouter from "@/routes/userSession";
 import scenariosRouter from "@/routes/scenarios";
 import {chatLimiter,globalLimiter} from "@/tools/Limiter"
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler"; // 👈 引入错误守卫
 
 dotenv.config();
 
@@ -26,6 +27,15 @@ app.use('/health', healthRouter);
 app.use('/api/chat', chatRouter,chatLimiter);// 聊天接口加专属限流
 app.use('/api', userSessionRouter);
 app.use('/api/scenarios', scenariosRouter);
+
+
+// ============================================================
+// ★ 全局安全防御防线（必须挂载在所有业务路由之后）★
+// ============================================================
+// 1. 404 未知端点兜底拦截
+app.use(notFoundHandler);
+// 2. 统一全局异常处理中间件（熔断未知系统错误，隐匿敏感堆栈）
+app.use(errorHandler);
 
 
 // 启动

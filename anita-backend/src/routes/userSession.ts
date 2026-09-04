@@ -3,13 +3,14 @@
  * 包括登录、登出、注册、获取玩家信息等接口
  */
 
-import { Router, Request, Response } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'; // 👈 加上 NextFunction
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import pool, { initUserTable } from '../tools/MySql';
 import type { PlayerState } from '../types/player';
 import {getScenario} from '../scenarios';
 import { generateToken, authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { validateBody, loginSchema, saveSessionSchema } from '../middleware/validate'; // 👈 引入校验规则
 
 dotenv.config();
 initUserTable(); // 初始化用户会话表，确保表存在
@@ -103,7 +104,11 @@ userSessionRouter.get('/saves/:playerId',  authenticate as any, async (req: Requ
  * 响应参数：
  * - success: 是否保存成功，布尔类型
 */
-userSessionRouter.post('/save', authenticate as any, async (req: Request, res: Response) => {
+userSessionRouter.post(
+    '/save', 
+    validateBody(saveSessionSchema), // 👈 自动拦截非法/残缺数据
+    authenticate as any, 
+    async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { playerId, scenarioId = 'deepspace_station_13', playerState, messages } = req.body;
         // 🛡️ 强制使用 Token 认证出的 playerId，绝不轻信前端传来的明文（防伪造攻击）
@@ -117,8 +122,8 @@ userSessionRouter.post('/save', authenticate as any, async (req: Request, res: R
 
         res.json({ success: true });
     } catch (error) {
-        console.error('保存存档失败:', error);
-        res.status(500).json({ error: 'Database error' });
+        // 🛡️ 交给全局 errorHandler 统一处理，不用担心向前端泄露数据库报错
+        next(error);
     }
 });
 /**
@@ -126,19 +131,19 @@ userSessionRouter.post('/save', authenticate as any, async (req: Request, res: R
  * 请求体：{ playerId: string }
  * 返回：{ success: true, token: string, playerId: string }
  */
-userSessionRouter.post('/login', (req: Request, res: Response) => {
+userSessionRouter.post(
+  '/login', 
+  validateBody(loginSchema), // 👈 自动校验非空、长度和字符合法性
+  (req: Request, res: Response) => {
     const { playerId } = req.body;
-    if (!playerId || typeof playerId !== 'string' || !playerId.trim()) {
-        res.status(400).json({ error: 'INVALID_CODENAME', message: '操作员代号不能为空。' });
-        return;
-    }
-
     const cleanId = playerId.trim().toUpperCase().replace(/\s+/g, '_');
+    
     // 签发 7 天有效期的加密令牌
     const token = generateToken(cleanId);
 
     console.log(`[安全认证] 操作员 [${cleanId}] 验证通过，已颁发神经接入密钥。`);
     res.json({ success: true, token, playerId: cleanId });
-});
+  }
+);
 
 export default userSessionRouter;
