@@ -3,12 +3,15 @@ import { streamText } from 'ai';
 import { deepseek } from '@ai-sdk/deepseek';
 import { buildSystemPrompt } from '../prompts/system';
 import { retrieveMemories, saveMemory } from '../memory/memory';
+import { getScenario } from '../scenarios';
 import { resolveAction } from '../arbiter/arbiter';
 
 const chatRouter = Router();
 
 chatRouter.post('/', async (req: Request, res: Response) => {
-  const { messages, playerState, playerId } = req.body;
+  const { messages, playerState, playerId,scenarioId } = req.body;
+  // 获取剧本配置
+  const scenarioConfig = getScenario(scenarioId);
 
   // ---- 0. 参数校验：SSE 头设置之前，保持 400 JSON 语义不变 ----
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -63,7 +66,7 @@ chatRouter.post('/', async (req: Request, res: Response) => {
     // ★ 阶段一：裁决节点 (Arbiter Engine)
     // 纯逻辑推理，得出数值、物品、线索与事实描述
     // ============================================================
-    const decision = await resolveAction(lastUserMsg, playerState, memoryContext);
+    const decision = await resolveAction(lastUserMsg, playerState, memoryContext, scenarioConfig.arbiterRules);
 
     // ============================================================
     // ★ 中间层：规则引擎校验 + 立即推送 tool 事件给前端
@@ -126,7 +129,7 @@ chatRouter.post('/', async (req: Request, res: Response) => {
     // ============================================================
     streamResult = await streamText({
       model: deepseek(process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash'),
-      system: buildSystemPrompt(updatedPlayerState, memoryContext, decision.factForNarrator),
+      system: scenarioConfig.systemPromptBuilder(updatedPlayerState, memoryContext, decision.factForNarrator),
       messages: messages,
     });
 

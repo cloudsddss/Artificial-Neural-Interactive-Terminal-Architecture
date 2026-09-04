@@ -10,12 +10,13 @@ import StatusPanel from '../components/StatusPanel';
 import InventoryPanel from '../components/InventoryPanel';
 import HazardPanel from '../components/HazardPanel';
 import CluePanel from '../components/CluePanel';
-import api from '../utils/api';
+import {loadScenarioSession } from '../utils/api';
 import type { Message, PlayerState } from '../types/type';
 
 // 路由状态的类型定义：LoginScreen 通过 navigate('/game', { state }) 传入
 type LocationState = {
   playerId: string;
+  scenarioId?: string;
   playerState: PlayerState;
   messages: Message[];
 };
@@ -32,12 +33,15 @@ export default function GamePage() {
   useEffect(() => {
     if (!state?.playerId) return;
     let cancelled = false;
-    api.get(`/load/${state.playerId}`)
-      .then(({ data }) => { if (!cancelled) setSync({ playerState: data.playerState, messages: data.messages }); })
-      // 拉取失败（后端离线等）：回退到 location.state 快照，不阻塞进游戏
-      .catch(() => { if (!cancelled) setSync({ playerState: state.playerState, messages: state.messages }); });
+    loadScenarioSession(state.playerId, state.scenarioId)
+      .then((data) => { 
+        if (!cancelled) setSync({ playerState: data.playerState, messages: data.messages }); 
+      })
+      .catch(() => { 
+        if (!cancelled) setSync({ playerState: state.playerState, messages: state.messages }); 
+      });
     return () => { cancelled = true; };
-  }, [state?.playerId]);
+  }, [state?.playerId, state?.scenarioId]);
 
   // 如果直接访问 /game 而没有登录数据，重定向回登录页
   if (!state || !state.playerId) {
@@ -56,6 +60,7 @@ export default function GamePage() {
   return (
     <GameContent
       playerId={state.playerId}
+      scenarioId={state.scenarioId} // 👈 补上这一行
       initialPlayerState={sync.playerState}
       initialMessages={sync.messages}
     />
@@ -63,10 +68,11 @@ export default function GamePage() {
 }
 
 // 游戏主界面：独立组件以保证 hooks 数量稳定（GamePage 在同步完成前会提前返回）
-function GameContent({ playerId, initialPlayerState, initialMessages }: {
+function GameContent({ playerId, initialPlayerState, initialMessages, scenarioId }: {
   playerId: string;
   initialPlayerState: PlayerState;
   initialMessages: Message[];
+  scenarioId?: string;
 }) {
   // 流式通信 hook：传入档案数据作为初始值，后续由 hook 内部管理状态
   const {
@@ -80,6 +86,7 @@ function GameContent({ playerId, initialPlayerState, initialMessages }: {
     initAudio,
   } = useStreamingChat({
     playerId,
+    scenarioId, // 👈 补上这个字段，hook 内部的聊天与静默存档就彻底打通了！
     initialMessages,
     initialPlayerState,
   });

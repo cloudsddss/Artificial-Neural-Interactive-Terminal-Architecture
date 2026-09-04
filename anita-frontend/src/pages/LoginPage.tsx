@@ -8,9 +8,9 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   // 登录成功回调：把数据通过 location.state 传给 GamePage
-  const handleLoginSuccess = (playerId: string, playerState: PlayerState, messages: Message[]) => {
-    console.log('Login successful:', { playerId, playerState, messages });
-    navigate('/game', { state: { playerId, playerState, messages } });
+  const handleLoginSuccess = (playerId: string) => {
+    console.log('Login successful:', { playerId });
+     navigate('/hub', { state: { playerId } });
   };
 
   return <LoginScreen onLoginSuccess={handleLoginSuccess} />;

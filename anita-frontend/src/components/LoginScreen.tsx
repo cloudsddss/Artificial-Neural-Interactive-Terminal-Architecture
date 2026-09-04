@@ -1,12 +1,10 @@
 import { useState } from "react";
-import type { Message, PlayerState } from "../types/type";
-import api from "../utils/api";
 import { LogIn, Terminal } from "lucide-react";
 
 
 //登录成功后调用的回调函数
 type LoginScreenProps = {
-  onLoginSuccess: (playerId: string, playerState: PlayerState, messages: Message[]) => void;
+  onLoginSuccess: (playerId: string) => void;
 };
 
 
@@ -23,31 +21,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         if (!playerId.trim()) {
             return;
         }
-        setIsLoading(true);
-        //默认状态，如果后端没有返回数据
-        let finalPlayerState: PlayerState = {
-            hp: 100, sanity: 80, integration: 10,
-            inventory: ['手电筒', '一级权限卡'], hazards: []
-        };
-        let finalMessages: Message[] = [];
-
-        // 调用实际的登录API请求存档，如果为新的存档会返回默认值，为旧存档的话会返回存档数据
-        try {
-            const { data } = await api.get(`/load/${playerId}`);
-            if(data.playerState) finalPlayerState = data.playerState;
-            // 处理消息数据,判断是否为新的存档
-            if(data.messages&&data.messages.length>0) finalMessages = data.messages;
-            else 
-            {
-                finalMessages = [{ role: 'assistant', content: `[系统日志] 验证通过。操作员 [${playerId}] 档案已建立。\nA.N.I.T.A. 系统已上线。请表明你的意图。` }];
-            }
-        } catch (error) {
-            console.warn('无法连接到后端存档服务器，将使用初始状态。', error);
-            finalMessages = [{ role: 'assistant', content: `[系统离线] 无法连接到主脑档案库。\nA.N.I.T.A. 备用节点已上线。请表明你的意图。` }];
-        }finally {
-            setIsLoading(false);
-            onLoginSuccess(playerId.toUpperCase().replace(/\s+/g, '_'), finalPlayerState, finalMessages);
-        }
+        onLoginSuccess(playerId.toUpperCase().replace(/\s+/g, '_')); // 调用父组件传入的回调函数，传递处理后的 playerId
     }
 
     return (

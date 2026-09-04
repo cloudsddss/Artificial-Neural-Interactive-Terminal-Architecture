@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Message, PlayerState, Clue } from '../types/type';
 import { useAudio } from './useAudio';
-import api, { API_BASE } from '../utils/api';
+import api, { API_BASE, savePlayerSession } from '../utils/api';
 // ============================================================
 // 返回值类型定义
 // ============================================================
@@ -32,12 +32,13 @@ const IDLE_TIMEOUT = 60_000;   // 两个事件间隔 > 60s（心跳每 15s 重�
 // hook 参数类型：playerId 必填，initialData 可选（来自登录存档）
 type UseStreamingChatOptions = {
   playerId: string;
+  scenarioId?: string; // 可选，当前剧本 ID，用于存档
   initialMessages?: Message[];    // 登录时传入的对话历史
   initialPlayerState?: PlayerState; // 登录时传入的玩家状态
 };
 
 export function useStreamingChat(options: UseStreamingChatOptions): UseStreamingChatReturn {
-  const { playerId, initialMessages, initialPlayerState } = options;
+  const { playerId, scenarioId, initialMessages, initialPlayerState } = options;
 
   // 获取音频 hook 的方法
   const { audioEnabled, initAudio, playTypingSound, playAlarmSound } = useAudio();
@@ -95,7 +96,8 @@ export function useStreamingChat(options: UseStreamingChatOptions): UseStreaming
 
     // 1 秒防抖：流式回复时 messages 可能每秒变化几十次，只存最后一次
     const timer = setTimeout(() => {
-      api.post('/save', { playerId, playerState, messages })
+      // 👉 替换原本手写的 api.post('/save', ...)
+      savePlayerSession({ playerId, scenarioId, playerState, messages })
         .catch(e => console.error('静默存档失败:', e));
     }, 1000);
 
@@ -116,7 +118,8 @@ export function useStreamingChat(options: UseStreamingChatOptions): UseStreaming
   useEffect(() => {
     const flushOnExit = () => {
       if (!playerId) return;
-      const data = { playerId, playerState: playerStateRef.current, messages: messagesRef.current };
+      // 👉 加上 scenarioId，防止关网页瞬间的最后一笔数据存丢剧本归属
+      const data = { playerId, scenarioId, playerState: playerStateRef.current, messages: messagesRef.current };
       const body = JSON.stringify(data);
       // keepalive 请求体有 64KB 上限（Chrome/Firefox），超长退化为普通请求尽力而为
       if (body.length > 60_000) {
@@ -219,7 +222,7 @@ export function useStreamingChat(options: UseStreamingChatOptions): UseStreaming
       const response = await fetch(API_BASE + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, playerState, playerId }),
+        body: JSON.stringify({ messages: newMessages, playerState, playerId, scenarioId }),
         signal: controller.signal                     // ★ 超时强断的核心
       });
 

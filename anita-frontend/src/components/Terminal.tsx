@@ -1,6 +1,7 @@
 import { useState,useEffect } from 'react';
 import type { Message } from '../types/type';
 import { Terminal as TerminalIcon, Volume2, VolumeX } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 type TerminalProps = {
   messages: Message[];
@@ -29,6 +30,7 @@ export default function Terminal({
   onInitAudio,
   playerId,
 }: TerminalProps) {
+  const navigate = useNavigate();
   const [inputValue, setInputValue] = useState('');
   // 历史命令回溯状态
   const [history, setHistory] = useState<string[]>([]);
@@ -110,11 +112,20 @@ export default function Terminal({
   return (
       <div className="flex-1 flex flex-col border border-green-800 rounded bg-black/50
         shadow-[0_0_15px_rgba(34,197,94,0.1)] relative overflow-hidden">
+
         {/* ---- 标题栏 ---- */}
         <div className="border-b border-green-800 p-3 flex items-center gap-2 bg-green-900/20">
           <TerminalIcon size={18} />
           <h1 className="font-bold tracking-widest text-sm">A.N.I.T.A. TACTICAL TERMINAL</h1>
           <div className="ml-auto flex items-center gap-4">
+            {/* ★ 新增：返回任务大厅按钮 ★ */}
+            <button
+              type="button"
+              onClick={() => navigate('/hub', { state: { playerId } })}
+              className="text-xs border border-green-800/80 px-2 py-1 rounded hover:bg-green-900/30 hover:border-green-400 text-green-400 transition-colors"
+            >
+              ← 任务大厅
+            </button>
             <button type="button" onClick={onInitAudio}
               className={`text-xs flex items-center gap-1 z-50 relative ${audioEnabled ? 'text-green-400' : 'text-yellow-500 animate-pulse'}`}>
               {audioEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
