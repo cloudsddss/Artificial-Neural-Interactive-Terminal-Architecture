@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import pool, { initUserTable } from '../tools/MySql';
 import type { PlayerState } from '../types/player';
 import {getScenario} from '../scenarios';
+import { generateToken, authenticate, AuthenticatedRequest } from '../middleware/auth';
 
 dotenv.config();
 initUserTable(); // 初始化用户会话表，确保表存在
@@ -27,6 +28,11 @@ const userSessionRouter = Router();
 // 抽离读档处理函数
 const loadSessionHandler = async (req: Request<{ playerId: string; scenarioId?: string }>, res: Response) => {
     const { playerId, scenarioId } = req.params;
+    // 🛡️ 防越权：如果 Token 里的身份和请求的 playerId 不一致，直接 403 拒绝！
+    if (req.user?.playerId !== playerId) {
+        res.status(403).json({ error: 'FORBIDDEN', message: '权限拒绝：禁止访问其他操作员的机密档案。' });
+        return;
+    }
     const scenarioConfig = getScenario(scenarioId);
     const targetScenarioId = scenarioId || scenarioConfig.id;
     try {
@@ -61,8 +67,9 @@ const loadSessionHandler = async (req: Request<{ playerId: string; scenarioId?: 
     }
 };
 // 👉 分别注册两个合法路径（去掉问号，彻底兼容 Express 5）
-userSessionRouter.get('/load/:playerId', loadSessionHandler);
-userSessionRouter.get('/load/:playerId/:scenarioId', loadSessionHandler);
+// 在路由上加入 authenticate 中间件
+userSessionRouter.get('/load/:playerId', authenticate as any, loadSessionHandler);
+userSessionRouter.get('/load/:playerId/:scenarioId', authenticate as any, loadSessionHandler);
 /**
  * 获取该玩家所有剧本的存档状态（供前端任务大厅一次性渲染卡片）
  * 请求参数：
@@ -70,8 +77,13 @@ userSessionRouter.get('/load/:playerId/:scenarioId', loadSessionHandler);
  * 响应参数：
  * - saves: 数组，包含每个剧本的存档信息，每个元素包含 scenario_id, state, updated_at
  */
-userSessionRouter.get('/saves/:playerId', async (req: Request, res: Response) => {
+userSessionRouter.get('/saves/:playerId',  authenticate as any, async (req: Request, res: Response) => {
     const { playerId } = req.params;
+     // 🛡️ 防越权检查
+    if (req.user?.playerId !== playerId) {
+        res.status(403).json({ error: 'FORBIDDEN', message: '权限拒绝：无权检索他人任务概览。' });
+        return;
+    }
     try {
         const [rows] = await pool.query<mysql.RowDataPacket[]>(
             'SELECT scenario_id, state, updated_at FROM user_sessions WHERE player_id = ?',
@@ -91,21 +103,42 @@ userSessionRouter.get('/saves/:playerId', async (req: Request, res: Response) =>
  * 响应参数：
  * - success: 是否保存成功，布尔类型
 */
-userSessionRouter.post('/save', async (req: Request, res: Response) => {
+userSessionRouter.post('/save', authenticate as any, async (req: Request, res: Response) => {
     try {
         const { playerId, scenarioId = 'deepspace_station_13', playerState, messages } = req.body;
+        // 🛡️ 强制使用 Token 认证出的 playerId，绝不轻信前端传来的明文（防伪造攻击）
+        const realPlayerId = req.user?.playerId || req.body.playerId;
         // 使用 ON DUPLICATE KEY UPDATE 实现“有则更新，无则新建”
         await pool.query(`
         INSERT INTO user_sessions (player_id, scenario_id, state, messages) 
         VALUES (?, ?, ?, ?) 
         ON DUPLICATE KEY UPDATE state = VALUES(state), messages = VALUES(messages)
-        `, [playerId, scenarioId, JSON.stringify(playerState), JSON.stringify(messages)]);
+        `, [realPlayerId, scenarioId, JSON.stringify(playerState), JSON.stringify(messages)]);
 
         res.json({ success: true });
     } catch (error) {
         console.error('保存存档失败:', error);
         res.status(500).json({ error: 'Database error' });
     }
-})
+});
+/**
+ * 操作员身份认证与令牌签发
+ * 请求体：{ playerId: string }
+ * 返回：{ success: true, token: string, playerId: string }
+ */
+userSessionRouter.post('/login', (req: Request, res: Response) => {
+    const { playerId } = req.body;
+    if (!playerId || typeof playerId !== 'string' || !playerId.trim()) {
+        res.status(400).json({ error: 'INVALID_CODENAME', message: '操作员代号不能为空。' });
+        return;
+    }
+
+    const cleanId = playerId.trim().toUpperCase().replace(/\s+/g, '_');
+    // 签发 7 天有效期的加密令牌
+    const token = generateToken(cleanId);
+
+    console.log(`[安全认证] 操作员 [${cleanId}] 验证通过，已颁发神经接入密钥。`);
+    res.json({ success: true, token, playerId: cleanId });
+});
 
 export default userSessionRouter;

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { LogIn, Terminal } from "lucide-react";
+import { LogIn, Terminal, AlertTriangle } from "lucide-react"; // 可选：加入警报图标
+import { loginPlayer } from "../utils/api"; // 👈 引入登录 API
 
 
 //登录成功后调用的回调函数
@@ -12,17 +13,32 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     // 初始化用户id和加载状态
     const [playerId, setPlayerId] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null); // 👈 记录认证错误信息
 
 
-    //登录逻辑
+    // 登录逻辑：调用后端神经防火墙换取 JWT Token
     const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();// 阻止表单默认提交行为
-        console.log('Login attempt for player:', playerId);
-        if (!playerId.trim()) {
-            return;
+        e.preventDefault();
+        if (!playerId.trim() || isLoading) return;
+
+        setErrorMessage(null);
+        setIsLoading(true);
+
+        try {
+            const cleanId = playerId.trim().toUpperCase().replace(/\s+/g, '_');
+            // 🛡️ 调用后端 POST /api/login，自动完成签名验证并将 Token 写入 localStorage
+            const result = await loginPlayer(cleanId);
+            
+            // 认证成功，通知父组件进入大厅
+            onLoginSuccess(result.playerId);
+        } catch (err: any) {
+            console.error('Authentication failed:', err);
+            const tip = err.response?.data?.message || '神经接入认证失败：后端服务未响应或拒绝连接。';
+            setErrorMessage(tip);
+        } finally {
+            setIsLoading(false);
         }
-        onLoginSuccess(playerId.toUpperCase().replace(/\s+/g, '_')); // 调用父组件传入的回调函数，传递处理后的 playerId
-    }
+    };
 
     return (
         <div className="min-h-screen bg-black text-green-500 font-mono p-4 flex items-center justify-center relative overflow-hidden">
@@ -56,6 +72,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 <LogIn size={16} />
                 {isLoading ? 'AUTHENTICATING...' : 'ACCESS TERMINAL'}
             </button>
+            {/* 🛡️ 认证失败警告提示 */}
+            {errorMessage && (
+                <div className="text-red-400 text-xs bg-red-950/40 border border-red-800 p-2.5 flex items-center gap-2 tracking-wide animate-pulse">
+                    <AlertTriangle size={14} className="shrink-0 text-red-400" />
+                    <span>[SECURITY_ALERT] {errorMessage}</span>
+                </div>
+            )}
             </form>
         </div>
         </div>

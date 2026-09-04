@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { LogOut, Play, Radar, RotateCcw, TerminalIcon } from "lucide-react";
+import { LogOut, Play, RotateCcw, TerminalIcon } from "lucide-react";
 import ScanlineOverlay from "../components/ScanlineOverlay";
 import type { ScenarioMeta, ScenarioSaveInfo } from "../types/type";
-import { fetchScenarios, fetchPlayerSaves, loadScenarioSession } from "../utils/api";
+import { fetchScenarios, fetchPlayerSaves, loadScenarioSession, clearAuthSession, getStoredPlayerId } from "../utils/api"; // 👈 引入清空凭证函数
+
 
 
 
@@ -12,12 +13,18 @@ export default function ScenarioHubPage() {
     const location = useLocation();// 获取当前路由信息
     const navigate = useNavigate();// 用于导航到其他路由
     //从路由中获取登录的操作员代号
-    const playerId = (location.state as { playerId?: string })?.playerId; // 从路由状态中获取playerId
+    // 🛡️ 优先从路由状态取，若 F5 刷新导致路由状态丢失，则从本地持久化中恢复
+    const playerId = (location.state as { playerId?: string })?.playerId || getStoredPlayerId();
 
     const [scenarios, setScenarios] = useState<ScenarioMeta[]>([]); // 存储每个剧本元数据列表
     const [saves, setSaves] = useState<Record<string, ScenarioSaveInfo>>({}); // 存储玩家在各个剧本的存档概览（以 scenario_id 为键，渲染时 O(1) 查找）
     const [loading, setLoading] = useState(true); // 加载状态
     const [enteringId, setEnteringId] = useState<string | null>(null); // 正在进入的剧本ID（进入流程中锁定，防重复点击）
+    
+    // 🛡️ 如果既没有路由传参，本地也没找到操作员代号，则退回登录页
+    if (!playerId) {
+        return <Navigate to="/" replace />;
+    }
 
     //1.并发拉取剧本元数据和玩家存档概览
     useEffect(() => {
@@ -86,6 +93,11 @@ export default function ScenarioHubPage() {
             </div>
         );
     }
+    // 🛡️ 安全退出登录：销毁本地 Token 并重置路由
+    const handleLogout = () => {
+        clearAuthSession();
+        navigate('/', { replace: true });
+    };
 
     return (
     <div className="min-h-screen bg-black text-green-500 font-mono p-4 md:p-8 flex flex-col relative overflow-hidden">
@@ -106,7 +118,7 @@ export default function ScenarioHubPage() {
             OPERATOR: <strong className="text-green-300">{playerId}</strong>
           </span>
           <button
-            onClick={() => navigate('/')}
+            onClick={handleLogout}
             className="flex items-center gap-1.5 border border-red-900/60 text-red-400 px-3 py-1.5 rounded hover:bg-red-950/30 hover:border-red-600 transition-colors"
           >
             <LogOut size={14} /> 退出登录

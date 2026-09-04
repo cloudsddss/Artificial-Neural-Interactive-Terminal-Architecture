@@ -5,11 +5,15 @@ import { buildSystemPrompt } from '../prompts/system';
 import { retrieveMemories, saveMemory } from '../memory/memory';
 import { getScenario } from '../scenarios';
 import { resolveAction } from '../arbiter/arbiter';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 
 const chatRouter = Router();
 
-chatRouter.post('/', async (req: Request, res: Response) => {
-  const { messages, playerState, playerId,scenarioId } = req.body;
+chatRouter.post('/', authenticate as any, async (req: AuthenticatedRequest, res: Response) => {
+
+  // 强制取 Token 里解密出的真实 playerId
+  const playerId = req.user?.playerId || req.body.playerId;
+  const { messages, playerState, scenarioId } = req.body;
   // 获取剧本配置
   const scenarioConfig = getScenario(scenarioId);
 

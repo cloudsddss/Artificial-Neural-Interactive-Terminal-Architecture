@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Message, PlayerState, Clue } from '../types/type';
 import { useAudio } from './useAudio';
-import api, { API_BASE, savePlayerSession } from '../utils/api';
+import api, { API_BASE, savePlayerSession, getStoredToken, removeStoredToken } from '../utils/api';
 // ============================================================
 // 返回值类型定义
 // ============================================================
@@ -126,9 +126,13 @@ export function useStreamingChat(options: UseStreamingChatOptions): UseStreaming
         api.post('/save', data).catch(e => console.error('卸载存档失败:', e));
         return;
       }
+      const token = getStoredToken();
       fetch(API_BASE + '/api/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}) // 👈 加上认证头
+        },
         body,
         keepalive: true,
       }).catch(e => console.error('卸载存档失败:', e));
@@ -219,12 +223,39 @@ export function useStreamingChat(options: UseStreamingChatOptions): UseStreaming
       // ---- 首字节超时：30s 没等到任何事件（含 ping）就 abort ----
       firstByteTimer = setTimeout(() => { timedOut = true; controller.abort(); }, FIRST_BYTE_TIMEOUT);
 
+      const token = getStoredToken();
       const response = await fetch(API_BASE + '/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}) // 👈 挂载 Bearer Token
+        },
         body: JSON.stringify({ messages: newMessages, playerState, playerId, scenarioId }),
         signal: controller.signal                     // ★ 超时强断的核心
       });
+
+      // 🛡️ 拦截 401：当 Token 7天过期或被伪造篡改时触发
+      if (response.status === 401) {
+        clearTimers();
+        removeStoredToken(); // 清空本地失效 Token
+        const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson.message || '神经接入凭据已失效，正在断开连接...';
+        
+        // 终端打出红字系统拦截提示
+        setMessages(prev => {
+          const lastMsg = prev[prev.length - 1];
+          return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + `\n\n[神经防火墙拦截] ${errMsg}\n[系统] 正在断开接入链路，请重新登录...` }];
+        });
+        
+        handledError = true;
+        // 1.8 秒后优雅退回终端登录界面
+        setTimeout(() => {
+          if (window.location.pathname !== '/') {
+            window.location.href = '/';
+          }
+        }, 1800);
+        return;
+      }
 
       if (!response.body) throw new Error('服务器连接错误，请重试');
 

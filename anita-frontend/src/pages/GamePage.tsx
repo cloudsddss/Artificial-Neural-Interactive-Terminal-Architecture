@@ -10,7 +10,7 @@ import StatusPanel from '../components/StatusPanel';
 import InventoryPanel from '../components/InventoryPanel';
 import HazardPanel from '../components/HazardPanel';
 import CluePanel from '../components/CluePanel';
-import {loadScenarioSession } from '../utils/api';
+import {loadScenarioSession,getStoredPlayerId  } from '../utils/api';
 import type { Message, PlayerState } from '../types/type';
 
 // 路由状态的类型定义：LoginScreen 通过 navigate('/game', { state }) 传入
@@ -43,9 +43,16 @@ export default function GamePage() {
     return () => { cancelled = true; };
   }, [state?.playerId, state?.scenarioId]);
 
-  // 如果直接访问 /game 而没有登录数据，重定向回登录页
-  if (!state || !state.playerId) {
+  // 🛡️ 智能状态回退：
+  // 1. 如果完全没有登录（连本地凭据都没有），退回登录页
+  const effectivePlayerId = state?.playerId || getStoredPlayerId();
+  if (!effectivePlayerId) {
     return <Navigate to="/" replace />;
+  }
+
+  // 2. 如果已登录，但刷新导致丢失了剧本选择状态，优雅引导回任务大厅重新选剧本（免重新登录）
+  if (!state || !state.playerId) {
+    return <Navigate to="/hub" replace />;
   }
 
   // 档案同步完成前先占位，避免先用旧快照渲染再被替换
