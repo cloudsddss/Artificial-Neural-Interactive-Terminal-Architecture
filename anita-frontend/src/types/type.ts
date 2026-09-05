@@ -11,6 +11,18 @@ export type Clue = {
   content: string;
   discoveredAt?: string;
 };
+
+// 1. 地图节点与连线定义
+export interface MapNode {
+  id: string;                     // 舱段ID
+  name: string;                   // 舱段名称
+  description: string;            // 舱段描述
+  x: number;                      // 坐标百分比 (0-100)
+  y: number;                      // 坐标百分比 (0-100)
+  dangerLevel?: 'safe' | 'caution' | 'danger';
+}
+export type MapEdge = [string, string]; // [起始节点ID, 目标节点ID]
+
 export type PlayerState = {
   hp: number;
   sanity: number;
@@ -18,6 +30,8 @@ export type PlayerState = {
   inventory: string[];
   hazards: string[];
   clues?: Clue[]; // 新增线索列表
+  currentRoom?: string;           // 当前所在房间/舱段ID
+  exploredRooms?: string[];       // 已探索的房间ID列表
 };
 
 
@@ -39,6 +53,7 @@ export type ToolCallPayload =
     sanityChange: number;    // 理智值变化
     systemLog: string;       // 隐藏彩蛋，仅 console.warn 输出
     newHazards: string[];    // 新增威胁，合并去重写入 hazards
+    integrationChange?: number; // 神经同步率变化，负=扣血，正=回血
   };
 }
 | {
@@ -66,6 +81,8 @@ export type ScenarioMeta = {
   tags: string[];
   briefing: string;
   initialPlayerState: PlayerState;
+  mapNodes?: MapNode[];
+  mapEdges?: MapEdge[];
 };
 
 // 2. 玩家在各个剧本的存档概览

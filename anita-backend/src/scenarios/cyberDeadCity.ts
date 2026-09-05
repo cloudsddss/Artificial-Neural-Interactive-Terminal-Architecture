@@ -16,12 +16,39 @@ export const cyberDeadCity: ScenarioConfig = {
     integration: 30,
     inventory: ['破损数据针', '神经阻断剂'],
     hazards: ['脑机过载', '流氓防火墙'],
+    currentRoom: 'access_point',
+    exploredRooms: ['access_point'],
   },
+
+  mapNodes: [
+    { id: 'access_point', name: '0x01-物理接入枢纽', description: '黑客实体潜行点与便携降温舱，相对安全', x: 20, y: 30, dangerLevel: 'safe' },
+    { id: 'subway_tunnel', name: '地下穿梭轨道路网', description: '高压杂散电流交织的积水线缆隧道', x: 50, y: 30, dangerLevel: 'caution' },
+    { id: 'firewall_gate', name: '黑色防火墙闸门', description: '流氓扫描守护进程盘踞的高级加密网关', x: 50, y: 75, dangerLevel: 'danger' },
+    { id: 'server_vault', name: '主根服务器阵列金库', description: '冷却液暴鸣的冷藏巨构阵列，神明AI栖息地', x: 80, y: 30, dangerLevel: 'danger' },
+    { id: 'uplink_tower', name: '微波逃逸天线井', description: '直通地表辐射废土的唯一高带宽逃生上行信道', x: 80, y: 75, dangerLevel: 'caution' }
+  ],
+  mapEdges: [
+    ['access_point', 'subway_tunnel'],
+    ['subway_tunnel', 'firewall_gate'],
+    ['subway_tunnel', 'server_vault'],
+    ['firewall_gate', 'uplink_tower'],
+    ['server_vault', 'uplink_tower']
+  ],
 
   arbiterRules: `
 【赛博网络物理法则】
 1. 遭受网络黑客攻击或流氓进程渗透时扣除理智与神经同步率；义体过载直接扣除生命值。
 2. 破损数据针可用于短路终端端口；神经阻断剂可暂时平复脑机接口过载。
+
+【空间连通与移动裁决法则】
+- 本网域包含 5 个节点：access_point(接入枢纽), subway_tunnel(穿梭隧道), firewall_gate(防火墙闸门), server_vault(根服务器金库), uplink_tower(逃逸天线井)。
+- 物理通道连通规则：
+  * access_point 仅连通 subway_tunnel
+  * subway_tunnel 连通 access_point, firewall_gate, server_vault
+  * firewall_gate 连通 subway_tunnel, uplink_tower
+  * server_vault 连通 subway_tunnel, uplink_tower
+  * uplink_tower 连通 firewall_gate, server_vault
+- 移动判定：当玩家意图进入/前往相邻节点且符合网络穿透逻辑时，在 newRoom 填入目标节点ID；未移动、被加密闸门阻挡或非法越级移动时填 null。
   `.trim(),
 
   systemPromptBuilder: (playerState: PlayerState, memoryContext: string, actionFact: string) => {

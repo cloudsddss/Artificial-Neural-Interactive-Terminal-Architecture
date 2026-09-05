@@ -16,6 +16,7 @@ export const ArbiterDecisionSchema = z.object({
     title: z.string(),
     content: z.string(),
   }).nullable().describe('若发现关键密码/档案填入对象，否则填 null'),
+  newRoom: z.string().nullable().describe('若玩家成功移动到新的舱段/房间，填入目标舱段ID（如 "medbay"、"reactor" 等）；未移动或被门禁阻挡填 null'),
   factForNarrator: z.string().describe('一句话总结刚刚发生的客观事实，供主脑生成台词'),
   systemLog: z.string().describe('系统隐藏日志'),
 });

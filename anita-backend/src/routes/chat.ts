@@ -105,7 +105,7 @@ chatRouter.post('/', authenticate as any, async (req: AuthenticatedRequest, res:
       }
     }
 
-    // 3. 线索发现
+        // 3. 线索发现
     if (decision.clueDiscovered) {
       sendEvent('tool', JSON.stringify({
         toolName: 'discoverClue',
@@ -113,7 +113,27 @@ chatRouter.post('/', authenticate as any, async (req: AuthenticatedRequest, res:
       }));
     }
 
-    // 4. 计算生效后的最新玩家状态，供阶段二主脑提示词使用
+    // 4. 空间位置转移（房间移动校验与事件分发）
+    let nextRoom = playerState.currentRoom;
+    let nextExplored = playerState.exploredRooms ? [...playerState.exploredRooms] : [];
+
+    if (decision.newRoom) {
+      // 校验该移动是否在剧本的地图节点中存在
+      const targetNode = scenarioConfig.mapNodes?.find(n => n.id === decision.newRoom);
+      if (targetNode) {
+        nextRoom = decision.newRoom;
+        if (!nextExplored.includes(nextRoom)) {
+          nextExplored.push(nextRoom);
+        }
+        sendEvent('tool', JSON.stringify({
+          toolName: 'updateLocation',
+          currentRoom: nextRoom,
+          exploredRooms: nextExplored,
+        }));
+      }
+    }
+
+    // 5. 计算生效后的最新玩家状态，供阶段二主脑提示词使用
     const updatedPlayerState = {
       ...playerState,
       hp: Math.max(0, Math.min(100, (playerState.hp ?? 100) + decision.hpChange)),
@@ -125,6 +145,8 @@ chatRouter.post('/', authenticate as any, async (req: AuthenticatedRequest, res:
       inventory: itemActuallyUsed
         ? (playerState.inventory ?? []).filter((i: string) => i !== itemActuallyUsed.item)
         : playerState.inventory,
+      currentRoom: nextRoom,
+      exploredRooms: nextExplored,
     };
 
     // ============================================================

@@ -388,6 +388,15 @@ export function useStreamingChat(options: UseStreamingChatOptions): UseStreaming
                 }));
                 // 💡【核心改动】：已移除往 messages[last].content 追加 "[物品使用]" 的代码
               }
+              // 👇 新增：4. 空间位置转移（雷达地图同步更新）
+              else if (toolName === 'updateLocation') {
+                const { currentRoom, exploredRooms } = args;
+                setPlayerState(prev => ({
+                  ...prev,
+                  currentRoom,
+                  exploredRooms: exploredRooms || (prev.exploredRooms ? [...new Set([...prev.exploredRooms, currentRoom])] : [currentRoom]),
+                }));
+              }
             } catch (error) {
               console.error("处理工具调用失败:", error);
             }

@@ -1,6 +1,19 @@
 import { PlayerState } from '../types/player';
 
 
+// 1. 地图节点定义（房间/舱段）
+export interface MapNode {
+    id: string;                     // 舱段唯一ID，如 "bridge", "medbay"
+    name: string;                   // 舱段中文名称，如 "舰桥指挥中心"
+    description: string;            // 舱段战术简报
+    x: number;                      // 相对坐标 X (百分比 0 - 100，便于雷达自适应渲染)
+    y: number;                      // 相对坐标 Y (百分比 0 - 100)
+    dangerLevel?: 'safe' | 'caution' | 'danger'; // 危险评级
+}
+
+// 2. 地图连线定义（通道/气闸连接关系）
+export type MapEdge = [string, string]; // [起点舱段ID, 终点舱段ID]
+
 export type ScenarioConfig = {
     id:string;// 剧本唯一标识符,如 "deepspace_station_13"
     name:string;// 剧本名称
@@ -15,7 +28,13 @@ export type ScenarioConfig = {
         integration: number;  // 初始神经同步率，百分比 0-100（与前端/数据库字段名一致）
         inventory: string[];  // 初始随身物品列表
         hazards: string[]; // 初始环境威胁列表，如 ["radiation", "biohazard"]
+        currentRoom?: string;
+        exploredRooms?: string[];
     };// 玩家初始状态配置
+
+    // 🛡️ 该剧本专属的设施空间拓扑图
+    mapNodes?: MapNode[];
+    mapEdges?: MapEdge[];
 
     //该剧本的主脑提示词构造函数
     systemPromptBuilder:(

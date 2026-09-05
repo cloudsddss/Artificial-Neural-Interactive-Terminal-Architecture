@@ -16,12 +16,37 @@ export const alienRelic: ScenarioConfig = {
     integration: 10,
     inventory: ['同位素光棒', '重力测绘仪'],
     hazards: ['重力倒错', '空间回响'],
+    currentRoom: 'camp_entrance',
+    exploredRooms: ['camp_entrance'],
   },
+
+  mapNodes: [
+    { id: 'camp_entrance', name: '科考先遣营地', description: '遗迹外缘临时基地，维持弱引力锚定场', x: 20, y: 50, dangerLevel: 'safe' },
+    { id: 'gravity_hall', name: '重力倒错回廊', description: '重力矢向周期性逆转，漂浮着未知几何多面体', x: 50, y: 25, dangerLevel: 'caution' },
+    { id: 'fractal_chasm', name: '分形晶体断层', description: '超空间折叠裂隙，折射刺目的高维极光', x: 50, y: 75, dangerLevel: 'danger' },
+    { id: 'hypercube_core', name: '超立方体圣殿', description: '超古代意识物理投影核心，空间曲率极度畸变', x: 80, y: 50, dangerLevel: 'danger' }
+  ],
+  mapEdges: [
+    ['camp_entrance', 'gravity_hall'],
+    ['camp_entrance', 'fractal_chasm'],
+    ['gravity_hall', 'hypercube_core'],
+    ['fractal_chasm', 'hypercube_core'],
+    ['gravity_hall', 'fractal_chasm']
+  ],
 
   arbiterRules: `
 【高维异星空间法则】
 1. 这里的重力与空间结构是折叠的，莽撞跳跃可能跌入折叠断层扣除巨额 HP，直视远古图腾扣除大量理智。
 2. 同位素光棒能照亮折叠阴影；重力测绘仪可用于侦测前方是否发生空间塌陷。
+
+【空间连通与移动裁决法则】
+- 本遗迹包含 4 个空间节点：camp_entrance(先遣营地), gravity_hall(重力回廊), fractal_chasm(分形断层), hypercube_core(超立方圣殿)。
+- 高维通道拓扑连通规则：
+  * camp_entrance 连通 gravity_hall, fractal_chasm
+  * gravity_hall 连通 camp_entrance, hypercube_core, fractal_chasm
+  * fractal_chasm 连通 camp_entrance, hypercube_core, gravity_hall
+  * hypercube_core 连通 gravity_hall, fractal_chasm
+- 移动判定：当玩家意图前往相邻物理区域且通过重力测量时，在 newRoom 填入目标区域ID；未移动或因引力紊乱受阻时填 null。
   `.trim(),
 
   systemPromptBuilder: (playerState: PlayerState, memoryContext: string, actionFact: string) => {

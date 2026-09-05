@@ -24,6 +24,8 @@ export function listScenarioMetas(){
         tags: scenario.tags,
         briefing: scenario.briefing,
         initialPlayerState: scenario.initialPlayerState,
+        mapNodes: scenario.mapNodes || [],
+        mapEdges: scenario.mapEdges || [],
     }))
 }
 

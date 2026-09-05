@@ -45,6 +45,9 @@ export const playerStateSchema = z.object({
   inventory: z.array(z.string()).default([]),
   hazards: z.array(z.string()).optional().default([]),
   clues: z.array(z.any()).optional().default([]),
+  // 👇 新增下面两行：
+  currentRoom: z.string().optional(),
+  exploredRooms: z.array(z.string()).optional().default([]),
 });
 
 /**

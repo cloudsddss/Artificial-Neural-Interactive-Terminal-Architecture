@@ -80,6 +80,11 @@ export const fetchScenarios = async (): Promise<ScenarioMeta[]> => {
   const { data } = await api.get('/scenarios');
   return data.scenarios || data || [];
 };
+// 👉 新增：根据剧本ID获取单个剧本完整配置（包含地图拓扑）
+export const fetchScenarioById = async (scenarioId: string): Promise<ScenarioMeta> => {
+  const { data } = await api.get(`/scenarios/${scenarioId}`);
+  return data;
+};
 // 2. 获取指定玩家在所有剧本的存档概览（大厅卡片用）
 export const fetchPlayerSaves = async (playerId: string): Promise<ScenarioSaveInfo[]> => {
   try {

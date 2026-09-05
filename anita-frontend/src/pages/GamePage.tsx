@@ -10,8 +10,10 @@ import StatusPanel from '../components/StatusPanel';
 import InventoryPanel from '../components/InventoryPanel';
 import HazardPanel from '../components/HazardPanel';
 import CluePanel from '../components/CluePanel';
-import {loadScenarioSession,getStoredPlayerId  } from '../utils/api';
-import type { Message, PlayerState } from '../types/type';
+import TacticalMapPanel from '../components/TacticalMapPanel';
+import { loadScenarioSession, getStoredPlayerId, fetchScenarioById } from '../utils/api';
+import type { Message, PlayerState, MapNode, MapEdge } from '../types/type';
+
 
 // 路由状态的类型定义：LoginScreen 通过 navigate('/game', { state }) 传入
 type LocationState = {
@@ -81,6 +83,21 @@ function GameContent({ playerId, initialPlayerState, initialMessages, scenarioId
   initialMessages: Message[];
   scenarioId?: string;
 }) {
+  // 🗺️ 拉取当前剧本的地图拓扑数据
+  const [mapNodes, setMapNodes] = useState<MapNode[]>([]);
+  const [mapEdges, setMapEdges] = useState<MapEdge[]>([]);
+
+  // 组件挂载时拉取剧本地图数据
+  useEffect(() => {
+    const targetId = scenarioId || 'deepspace_station_13';
+    fetchScenarioById(targetId)
+      .then(meta => {
+        if (meta.mapNodes) setMapNodes(meta.mapNodes);
+        if (meta.mapEdges) setMapEdges(meta.mapEdges);
+      })
+      .catch(err => console.warn('地图拓扑同步跳过:', err));
+  }, [scenarioId]);
+
   // 流式通信 hook：传入档案数据作为初始值，后续由 hook 内部管理状态
   const {
     messages,
@@ -117,8 +134,15 @@ function GameContent({ playerId, initialPlayerState, initialMessages, scenarioId
         onInitAudio={initAudio}
         playerId={playerId}
       />
-
+      {/* 右侧仪表盘 */}
       <div className="w-full md:w-80 flex flex-col gap-4 z-40">
+        {/* 🗺️ 挂载战术拓扑雷达 */}
+        <TacticalMapPanel
+          nodes={mapNodes}
+          edges={mapEdges}
+          currentRoom={playerState.currentRoom}
+          exploredRooms={playerState.exploredRooms}
+        />
         <StatusPanel playerState={playerState} isTakingDamage={isTakingDamage} />
         <InventoryPanel inventory={playerState.inventory} />
         <HazardPanel hazards={playerState.hazards} />

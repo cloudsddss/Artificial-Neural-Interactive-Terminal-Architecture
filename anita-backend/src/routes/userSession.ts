@@ -50,7 +50,10 @@ const loadSessionHandler = async (req: Request<{ playerId: string; scenarioId?: 
                 integration: scenarioConfig.initialPlayerState.integration,
                 inventory: scenarioConfig.initialPlayerState.inventory,
                 hazards: scenarioConfig.initialPlayerState.hazards,
-                clues: []
+                clues: [],
+                // 👇 新增下面两行：
+                currentRoom: scenarioConfig.initialPlayerState.currentRoom,
+                exploredRooms: scenarioConfig.initialPlayerState.exploredRooms,
             };
             const defaultMessages = [
                 { role: 'assistant', content: scenarioConfig.openingMessage }
