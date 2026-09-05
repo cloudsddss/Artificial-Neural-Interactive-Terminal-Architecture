@@ -7,6 +7,7 @@ import userSessionRouter from "@/routes/userSession";
 import scenariosRouter from "@/routes/scenarios";
 import {chatLimiter,globalLimiter} from "@/tools/Limiter"
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler"; // 👈 引入错误守卫
+import { initDB } from "./tools/MySql";
 
 dotenv.config();
 
@@ -39,8 +40,16 @@ app.use(errorHandler);
 
 
 // 启动
-app.listen(PORT, () => {
-  console.log(`===============================================`);
-  console.log(` A.N.I.T.A. BACKEND ONLINE PORT: ${PORT}`);
-  console.log(`===============================================`);
-});
+// 启动：非测试环境才真正启动端口监听
+if (process.env.NODE_ENV !== 'test') {
+  initDB().then(() => {
+    app.listen(PORT, () => {
+      console.log(`===============================================`);
+      console.log(` A.N.I.T.A. BACKEND ONLINE PORT: ${PORT}`);
+      console.log(`===============================================`);
+    });
+  });
+}
+
+// 🛡️ 导出 app 实例，供 Supertest 自动化测试调用
+export default app;

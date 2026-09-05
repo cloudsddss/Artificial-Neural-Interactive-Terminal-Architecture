@@ -38,7 +38,6 @@ export interface MemoryRecord {
   timestamp: number;
 }
 
-initDB();
 
 // 全局的特征提取器 (Embedding Model)
 let extractor: any = null

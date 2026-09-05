@@ -6,14 +6,13 @@
 import { Router, Request, Response, NextFunction } from 'express'; // 👈 加上 NextFunction
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
-import pool, { initUserTable } from '../tools/MySql';
+import pool from '../tools/MySql';
 import type { PlayerState } from '../types/player';
 import {getScenario} from '../scenarios';
 import { generateToken, authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validateBody, loginSchema, saveSessionSchema } from '../middleware/validate'; // 👈 引入校验规则
 
 dotenv.config();
-initUserTable(); // 初始化用户会话表，确保表存在
 
 const userSessionRouter = Router();
 
