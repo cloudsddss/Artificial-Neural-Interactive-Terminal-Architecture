@@ -37,6 +37,7 @@ const api = axios.create({
 });
 // 请求拦截器：未来可统一附加 token、playerId 等
 api.interceptors.request.use((config) => {
+  config.headers['x-request-id'] = crypto.randomUUID(); // 前端主动给每次请求贴标签
   // 可以在这里统一附加 token、playerId 等
   const token = getStoredToken();
   if (token) {

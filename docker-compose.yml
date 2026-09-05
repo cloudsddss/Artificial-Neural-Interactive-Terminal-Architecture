@@ -1,0 +1,84 @@
+
+
+services:
+  # ============================================================
+  # 1. 数据库服务 (MySQL 8.0)
+  # ============================================================
+  mysql:
+    image: docker.m.daocloud.io/library/mysql:8.0
+    container_name: anita-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_123
+      MYSQL_DATABASE: anita_db
+      MYSQL_USER: anita_user
+      MYSQL_PASSWORD: anita_password
+    ports:
+      - "3307:3306"
+    volumes:
+      # 🛡️ 宿主机持久化卷：容器删除重启，所有存档与日志永不丢失
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password_123"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - anita-network
+
+  # ============================================================
+  # 2. A.N.I.T.A. 后端核心服务 (Node.js 运行时)
+  # ============================================================
+  backend:
+    build:
+      context: ./anita-backend
+      dockerfile: Dockerfile
+    container_name: anita-backend
+    restart: unless-stopped
+    # 🛡️ 等待 MySQL 真正完成初始化就绪后，再拉起后端
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # 自动继承后端的 .env (DeepSeek API Key 等)
+    env_file:
+      - ./anita-backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # 自动连接容器内部网络中的 MySQL
+      DB_HOST: mysql
+      DB_USER: anita_user
+      DB_PASSWORD: anita_password
+      DB_NAME: anita_db
+    ports:
+      - "3001:3001"
+    networks:
+      - anita-network
+
+  # ============================================================
+  # 3. A.N.I.T.A. 终端前端服务 (Nginx Alpine + SSE 流式代理)
+  # ============================================================
+  frontend:
+    build:
+      context: ./anita-frontend
+      dockerfile: Dockerfile
+    container_name: anita-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # 映射到宿主机 80 端口，浏览器直接访问 http://localhost 即可畅玩
+      - "80:80"
+    networks:
+      - anita-network
+
+# ============================================================
+# 网络与数据持久化声明
+# ============================================================
+networks:
+  anita-network:
+    driver: bridge
+
+volumes:
+  mysql_data:

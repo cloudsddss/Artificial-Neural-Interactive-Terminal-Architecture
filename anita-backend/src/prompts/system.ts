@@ -1,4 +1,4 @@
-import { PlayerState } from '@/types/player';
+import { PlayerState } from '../types/player';
 
 /**
  * 根据理智值动态生成认知污染指令

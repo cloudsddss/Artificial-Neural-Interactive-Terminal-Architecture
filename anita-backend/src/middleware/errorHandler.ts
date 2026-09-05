@@ -55,16 +55,18 @@ export function errorHandler(
     return;
   }
   // 4. 未知系统异常（数据库挂了、代码空指针等）
-  // 🛡️ 核心安全原则：在服务端控制台打印详细堆栈供排查，但对客户端彻底隐匿技术细节！
-  console.error('[CRITICAL SYSTEM ERROR]', {
+  // 🛡️ 使用带有该请求专属 TraceID 的 logger 记录完整堆栈
+  const log = req.log || console;
+  log.error({
     path: req.path,
     method: req.method,
     errorMessage: err.message,
     stack: err.stack
-  });
+  }, '[CRITICAL SYSTEM ERROR] 触发安全熔断');
   res.status(500).json({
     error: 'INTERNAL_SERVER_ERROR',
-    message: 'A.N.I.T.A. 神经主脑处理异常，已触发安全熔断保护。'
+    message: 'A.N.I.T.A. 神经主脑处理异常，已触发安全熔断保护。',
+    traceId: req.id, // 👈 核心亮点：把 TraceID 发给客户端，出问题凭 ID 秒查日志！
   });
 }
 /**

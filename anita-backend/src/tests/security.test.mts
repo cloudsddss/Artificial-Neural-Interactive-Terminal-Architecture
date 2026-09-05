@@ -7,7 +7,8 @@ vi.mock('../tools/MySql', () => ({
   default: {
     query: vi.fn().mockResolvedValue([[]]),
   },
-  initDB: vi.fn(), // 👈 统一 Mock initDB
+  initDB: vi.fn(),
+  logToDatabase: vi.fn(), // 👈 加上 Mock
 }));
 
 describe('A.N.I.T.A. 神经系统安全与接口自动化测试', () => {
